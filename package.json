@@ -1,0 +1,35 @@
+{
+  "name": "nexuscore",
+  "version": "1.0.0",
+  "description": "DevForge - The Next-Generation Platform Engineering Command Center",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
+    "db:migrate": "turbo run db:migrate",
+    "start": "./scripts/dev-start.sh",
+    "start:simple": "./scripts/dev-start-simple.sh",
+    "stop": "./scripts/dev-stop.sh",
+    "restart": "./scripts/dev-restart.sh",
+    "logs": "tail -f logs/web.log",
+    "logs:db": "docker-compose -f docker-compose.dev.yml logs -f postgres",
+    "logs:redis": "docker-compose -f docker-compose.dev.yml logs -f redis",
+    "status": "echo 'Checking DevForge status...' && curl -s http://localhost:3000 > /dev/null && echo '✅ Web App: Running' || echo '❌ Web App: Not running' && docker-compose -f docker-compose.dev.yml ps"
+  },
+  "devDependencies": {
+    "turbo": "^1.10.16",
+    "@types/node": "^20.8.7",
+    "typescript": "^5.2.2"
+  },
+  "packageManager": "pnpm@8.10.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

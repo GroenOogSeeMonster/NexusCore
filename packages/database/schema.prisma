@@ -1,0 +1,621 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ===== USER MANAGEMENT =====
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  username    String   @unique
+  firstName   String?
+  lastName    String?
+  avatar      String?
+  bio         String?
+  role        UserRole @default(DEVELOPER)
+  
+  // Authentication
+  passwordHash String?
+  emailVerified DateTime?
+  
+  // Team associations
+  teamMemberships TeamMember[]
+  ownedTeams      Team[]       @relation("TeamOwner")
+  
+  // Activity tracking
+  actions         Action[]
+  workflowRuns    WorkflowExecution[]
+  knowledgeItems  Knowledge[]
+  
+  // Preferences
+  preferences Json @default("{}")
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("users")
+}
+
+model Team {
+  id          String @id @default(cuid())
+  name        String @unique
+  displayName String
+  description String?
+  avatar      String?
+  
+  // Team ownership
+  owner   User   @relation("TeamOwner", fields: [ownerId], references: [id])
+  ownerId String
+  
+  // Team members
+  members TeamMember[]
+  
+  // Team resources
+  services    Service[]
+  workflows   Workflow[]
+  scorecards  Scorecard[]
+  
+  // Settings
+  settings Json @default("{}")
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String         @id @default(cuid())
+  user   User           @relation(fields: [userId], references: [id])
+  userId String
+  team   Team           @relation(fields: [teamId], references: [id])
+  teamId String
+  role   TeamMemberRole @default(MEMBER)
+  
+  // Timestamps
+  joinedAt DateTime @default(now())
+  
+  @@unique([userId, teamId])
+  @@map("team_members")
+}
+
+// ===== SERVICE CATALOG =====
+
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  displayName String?
+  description String?
+  
+  // Service metadata
+  type        ServiceType @default(SERVICE)
+  language    String[]
+  framework   String[]
+  tags        String[]
+  
+  // Repository information
+  repository    String?
+  repositoryUrl String?
+  branch        String? @default("main")
+  
+  // Team ownership
+  owner   Team   @relation(fields: [teamId], references: [id])
+  teamId  String
+  
+  // Dependencies
+  dependsOn    Dependency[] @relation("ServiceDependencies")
+  dependents   Dependency[] @relation("ServiceDependents")
+  
+  // Metrics and monitoring
+  metrics      Metric[]
+  deployments  Deployment[]
+  incidents    Incident[]
+  
+  // Scorecards
+  scorecards   ServiceScorecard[]
+  
+  // 3D Visualization data
+  position Json? // { x, y, z } coordinates
+  color    String @default("#6B46C1")
+  size     Float  @default(1.0)
+  
+  // AI Embeddings for search and similarity
+  embedding Unsupported("vector(1536)")?
+  
+  // API endpoints
+  apiEndpoints Json @default("[]")
+  
+  // Documentation
+  documentation String?
+  
+  // Status
+  status ServiceStatus @default(ACTIVE)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([name, teamId])
+  @@map("services")
+}
+
+model Dependency {
+  id String @id @default(cuid())
+  
+  // Service relationships
+  service     Service @relation("ServiceDependencies", fields: [serviceId], references: [id])
+  serviceId   String
+  dependsOn   Service @relation("ServiceDependents", fields: [dependsOnId], references: [id])
+  dependsOnId String
+  
+  // Dependency metadata
+  type        DependencyType @default(RUNTIME)
+  description String?
+  version     String?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  @@unique([serviceId, dependsOnId])
+  @@map("dependencies")
+}
+
+// ===== WORKFLOWS & AUTOMATION =====
+
+model Workflow {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  
+  // Workflow definition (node-based graph)
+  definition Json
+  
+  // Trigger configuration
+  triggers Json @default("[]")
+  
+  // Team ownership
+  owner   Team   @relation(fields: [teamId], references: [id])
+  teamId  String
+  
+  // Execution history
+  executions WorkflowExecution[]
+  
+  // AI optimization data
+  performanceMetrics Json @default("{}")
+  suggestions        Json @default("[]")
+  
+  // Status and versioning
+  status  WorkflowStatus @default(DRAFT)
+  version Int            @default(1)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("workflows")
+}
+
+model WorkflowExecution {
+  id         String @id @default(cuid())
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  workflowId String
+  
+  // Execution metadata
+  triggeredBy User   @relation(fields: [userId], references: [id])
+  userId      String
+  
+  // Execution status
+  status     ExecutionStatus @default(PENDING)
+  startedAt  DateTime        @default(now())
+  completedAt DateTime?
+  duration   Int? // in milliseconds
+  
+  // Execution data
+  input  Json?
+  output Json?
+  logs   Json @default("[]")
+  error  String?
+  
+  // Node execution details
+  nodeExecutions Json @default("[]")
+  
+  @@map("workflow_executions")
+}
+
+// ===== ACTIONS & SELF-SERVICE =====
+
+model Action {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  
+  // Action definition
+  definition Json
+  
+  // Execution metadata
+  executedBy User      @relation(fields: [userId], references: [id])
+  userId     String
+  executedAt DateTime  @default(now())
+  
+  // Action result
+  status   ActionStatus @default(PENDING)
+  result   Json?
+  error    String?
+  duration Int? // in milliseconds
+  
+  // Risk assessment
+  riskLevel RiskLevel @default(LOW)
+  
+  @@map("actions")
+}
+
+// ===== SCORECARDS & METRICS =====
+
+model Scorecard {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  
+  // Scorecard configuration
+  rules Json
+  
+  // Team ownership
+  owner   Team   @relation(fields: [teamId], references: [id])
+  teamId  String
+  
+  // Service scorecards
+  serviceScores ServiceScorecard[]
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("scorecards")
+}
+
+model ServiceScorecard {
+  id String @id @default(cuid())
+  
+  // Relationships
+  service     Service   @relation(fields: [serviceId], references: [id])
+  serviceId   String
+  scorecard   Scorecard @relation(fields: [scorecardId], references: [id])
+  scorecardId String
+  
+  // Score data
+  score      Float
+  maxScore   Float
+  percentage Float
+  
+  // Individual rule scores
+  ruleScores Json
+  
+  // Timestamps
+  calculatedAt DateTime @default(now())
+  
+  @@unique([serviceId, scorecardId])
+  @@map("service_scorecards")
+}
+
+model Metric {
+  id        String @id @default(cuid())
+  service   Service @relation(fields: [serviceId], references: [id])
+  serviceId String
+  
+  // Metric metadata
+  name        String
+  description String?
+  type        MetricType
+  unit        String?
+  
+  // Metric values
+  value     Float
+  timestamp DateTime @default(now())
+  
+  // Additional metadata
+  labels Json @default("{}")
+  
+  @@index([serviceId, name, timestamp])
+  @@map("metrics")
+}
+
+// ===== DEPLOYMENTS =====
+
+model Deployment {
+  id        String @id @default(cuid())
+  service   Service @relation(fields: [serviceId], references: [id])
+  serviceId String
+  
+  // Deployment metadata
+  version     String
+  environment Environment
+  
+  // Git information
+  commitHash String?
+  branch     String?
+  tag        String?
+  
+  // Deployment status
+  status     DeploymentStatus @default(PENDING)
+  startedAt  DateTime         @default(now())
+  completedAt DateTime?
+  duration   Int? // in milliseconds
+  
+  // Deployment artifacts
+  artifacts Json @default("[]")
+  logs      String?
+  
+  @@map("deployments")
+}
+
+// ===== KNOWLEDGE MANAGEMENT =====
+
+model Knowledge {
+  id      String @id @default(cuid())
+  title   String
+  content String @db.Text
+  
+  // Knowledge metadata
+  type        KnowledgeType
+  source      String
+  sourceUrl   String?
+  language    String @default("en")
+  
+  // Content processing
+  embedding   Unsupported("vector(1536)")?
+  summary     String?
+  tags        String[]
+  keywords    String[]
+  
+  // Author information
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId String
+  
+  // Knowledge relationships
+  relatedTo   KnowledgeRelation[] @relation("KnowledgeSource")
+  relatedFrom KnowledgeRelation[] @relation("KnowledgeTarget")
+  
+  // Access control
+  isPublic    Boolean @default(true)
+  permissions Json    @default("[]")
+  
+  // Content versions
+  version Int @default(1)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([embedding])
+  @@map("knowledge")
+}
+
+model KnowledgeRelation {
+  id String @id @default(cuid())
+  
+  source   Knowledge @relation("KnowledgeSource", fields: [sourceId], references: [id])
+  sourceId String
+  target   Knowledge @relation("KnowledgeTarget", fields: [targetId], references: [id])
+  targetId String
+  
+  // Relationship metadata
+  type       RelationType
+  confidence Float        @default(1.0)
+  
+  @@unique([sourceId, targetId])
+  @@map("knowledge_relations")
+}
+
+// ===== INCIDENTS & MONITORING =====
+
+model Incident {
+  id        String @id @default(cuid())
+  service   Service @relation(fields: [serviceId], references: [id])
+  serviceId String
+  
+  // Incident metadata
+  title       String
+  description String?
+  severity    Severity   @default(LOW)
+  status      IncidentStatus @default(OPEN)
+  
+  // Incident timeline
+  detectedAt  DateTime @default(now())
+  resolvedAt  DateTime?
+  duration    Int? // in milliseconds
+  
+  // Incident data
+  errorMessage String?
+  stackTrace   String? @db.Text
+  metadata     Json    @default("{}")
+  
+  @@map("incidents")
+}
+
+// ===== INTEGRATIONS =====
+
+model Integration {
+  id   String @id @default(cuid())
+  name String @unique
+  type IntegrationType
+  
+  // Integration configuration
+  config Json
+  
+  // Status
+  status        IntegrationStatus @default(INACTIVE)
+  lastSyncedAt  DateTime?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("integrations")
+}
+
+// ===== ENUMS =====
+
+enum UserRole {
+  ADMIN
+  PLATFORM_ENGINEER
+  DEVELOPER
+  VIEWER
+}
+
+enum TeamMemberRole {
+  OWNER
+  MAINTAINER
+  MEMBER
+}
+
+enum ServiceType {
+  SERVICE
+  LIBRARY
+  DATABASE
+  QUEUE
+  CACHE
+  API_GATEWAY
+  LOAD_BALANCER
+  MONITORING
+  OTHER
+}
+
+enum ServiceStatus {
+  ACTIVE
+  DEPRECATED
+  ARCHIVED
+  MAINTENANCE
+}
+
+enum DependencyType {
+  RUNTIME
+  BUILD
+  TEST
+  DEVELOPMENT
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+enum ActionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MetricType {
+  COUNTER
+  GAUGE
+  HISTOGRAM
+  SUMMARY
+}
+
+enum Environment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+  TESTING
+}
+
+enum DeploymentStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+  ROLLED_BACK
+}
+
+enum KnowledgeType {
+  DOCUMENTATION
+  RUNBOOK
+  FAQ
+  TUTORIAL
+  API_REFERENCE
+  TROUBLESHOOTING
+  BEST_PRACTICES
+  ARCHITECTURE
+  OTHER
+}
+
+enum RelationType {
+  REFERENCES
+  SIMILAR_TO
+  PART_OF
+  DEPENDS_ON
+  RELATED_TO
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum IntegrationType {
+  GITHUB
+  GITLAB
+  BITBUCKET
+  KUBERNETES
+  AWS
+  GCP
+  AZURE
+  DATADOG
+  PROMETHEUS
+  GRAFANA
+  SLACK
+  TEAMS
+  JIRA
+  LINEAR
+  PAGERDUTY
+  CUSTOM
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  CONFIGURING
+}

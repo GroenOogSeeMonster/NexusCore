@@ -1,0 +1,17 @@
+{
+  email {$CADDY_EMAIL}
+  auto_https disable_certs
+}
+
+{$DOMAIN} {
+  encode gzip zstd
+  reverse_proxy web:3000
+}
+
+# Local fallback for hosts without DNS ready (optional)
+localhost {
+  encode gzip zstd
+  reverse_proxy web:3000
+}
+
+

@@ -1,0 +1,47 @@
+# Simple Dockerfile for Next.js web application
+FROM node:18-alpine
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY apps/web/package.json ./
+COPY apps/web/package-lock.json* ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY apps/web/ ./
+
+# Build the application
+ENV NEXT_TELEMETRY_DISABLED 1
+RUN npm run build
+
+# Production image
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built application
+COPY --from=0 --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=0 --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=0 --chown=nextjs:nodejs /app/public ./public
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT 3000
+
+# Start the application
+CMD ["node", "server.js"]
+
